@@ -1,0 +1,336 @@
+***************
+*** 407,412 ****
+  
+      # Iterate through the tree which pyang has built, solely for the modules
+      # that pyang was asked to build
+      for modname in pyang_called_modules:
+          module = module_d[modname]
+          mods = [module]
+--- 407,413 ----
+  
+      # Iterate through the tree which pyang has built, solely for the modules
+      # that pyang was asked to build
++ 
+      for modname in pyang_called_modules:
+          module = module_d[modname]
+          mods = [module]
+***************
+*** 414,421 ****
+              subm = ctx.get_module(i.arg)
+              if subm is not None:
+                  mods.append(subm)
+          for m in mods:
+-             children = [ch for ch in module.i_children if ch.keyword in statements.data_definition_keywords]
+              get_children(ctx, fd, children, m, m)
+  
+              if ctx.opts.build_rpcs:
+--- 415,423 ----
+              subm = ctx.get_module(i.arg)
+              if subm is not None:
+                  mods.append(subm)
++ 
+          for m in mods:
++             children = [ch for ch in m.i_children if ch.keyword in statements.data_definition_keywords]
+              get_children(ctx, fd, children, m, m)
+  
+              if ctx.opts.build_rpcs:
+***************
+*** 662,672 ****
+      # When pyangbind was asked to split classes, then we need to create the
+      # relevant directories for the modules to be created into. In this case
+      # even though fd might be a valid file handle, we ignore it.
+      if ctx.opts.split_class_dir:
+          if path == "":
+              fpath = ctx.pybind_split_basepath + "/__init__.py"
+          else:
+              pparts = path.split("/")
+              npath = "/"
+  
+              # Check that we don't have the problem of containers that are nested
+--- 664,686 ----
+      # When pyangbind was asked to split classes, then we need to create the
+      # relevant directories for the modules to be created into. In this case
+      # even though fd might be a valid file handle, we ignore it.
++ 
++ 
++ 
++     #print('pybind_split_basepath:',ctx.pybind_split_basepath)
++ 
+      if ctx.opts.split_class_dir:
+          if path == "":
++             """module_path = ctx.pybind_split_basepath + "/"  + safe_name(module.arg)
++             if not os.path.exists(module_path):
++                 print('created %s',module_path)
++                 os.makedirs(module_path)
++             fpath =  module_path + "/__init__.py"
++ 			"""
+              fpath = ctx.pybind_split_basepath + "/__init__.py"
+          else:
+              pparts = path.split("/")
++             #npath = "/" + safe_name(module.arg) + "/"
+              npath = "/"
+  
+              # Check that we don't have the problem of containers that are nested
+***************
+*** 684,689 ****
+              if not os.path.exists(bpath):
+                  os.makedirs(bpath)
+              fpath = bpath + "/__init__.py"
+          if not os.path.exists(fpath):
+              try:
+                  if six.PY3:
+--- 698,707 ----
+              if not os.path.exists(bpath):
+                  os.makedirs(bpath)
+              fpath = bpath + "/__init__.py"
++             #print('npath:', npath)
++ 
++         #print('fpath:', fpath)
++ 
+          if not os.path.exists(fpath):
+              try:
+                  if six.PY3:
+***************
+*** 706,711 ****
+          # provided.
+          nfd = fd
+  
+      if parent_cfg:
+          # The first time we find a container that has config false set on it
+          # then we need to hand this down the tree - we don't need to look if
+--- 724,736 ----
+          # provided.
+          nfd = fd
+  
++     tfpath = os.getcwd() + ("/_translate_%s_obj.py" % safe_name(module.arg))
++     #print("tfpath:", tfpath)
++     if six.PY3:
++         tfd = open(tfpath, "a", encoding="utf-8")
++     else:
++         tfd = codecs.open(tfpath, "a", encoding="utf-8")
++ 
+      if parent_cfg:
+          # The first time we find a container that has config false set on it
+          # then we need to hand this down the tree - we don't need to look if
+***************
+*** 775,791 ****
+  
+      # 'container', 'module', 'list' and 'submodule' all have their own classes
+      # generated.
+-     if parent.keyword in ["container", "module", "list", "submodule", "input", "output", "rpc", "notification"]:
+          if ctx.opts.split_class_dir:
+              nfd.write("class %s(PybindBase):\n" % safe_name(parent.arg))
+          else:
+              if not path == "":
+                  nfd.write(
+                      "class yc_%s_%s_%s(PybindBase):\n"
+                      % (safe_name(parent.arg), safe_name(module.arg), safe_name(path.replace("/", "_")))
+                  )
+              else:
+                  nfd.write("class %s(PybindBase):\n" % safe_name(parent.arg))
+  
+          # If the container is actually a list, then determine what the key value
+          # is and store this such that we can give a hint.
+--- 800,822 ----
+  
+      # 'container', 'module', 'list' and 'submodule' all have their own classes
+      # generated.
++ 
++     curr_class_name = ""
++ 
++     if parent.keyword in ["container", "module", "list", "submodule", "input", "output", "rpc", "notification", "action"]:
+          if ctx.opts.split_class_dir:
+              nfd.write("class %s(PybindBase):\n" % safe_name(parent.arg))
++             curr_class_name = safe_name(parent.arg)
+          else:
+              if not path == "":
+                  nfd.write(
+                      "class yc_%s_%s_%s(PybindBase):\n"
+                      % (safe_name(parent.arg), safe_name(module.arg), safe_name(path.replace("/", "_")))
+                  )
++                 curr_class_name = "yc_%s_%s_%s" % (safe_name(parent.arg), safe_name(module.arg), safe_name(path.replace("/", "_")))
+              else:
+                  nfd.write("class %s(PybindBase):\n" % safe_name(parent.arg))
++                 curr_class_name = safe_name(parent.arg)
+  
+          # If the container is actually a list, then determine what the key value
+          # is and store this such that we can give a hint.
+***************
+*** 1077,1082 ****
+              % path.split("/")[1:]
+          )
+  
+          # For each element, write out a getter and setter method - with the doc
+          # string of the element within the model.
+          for i in elements:
+--- 1108,1221 ----
+              % path.split("/")[1:]
+          )
+  
++         #For now , no need to add this translate logic inside the python binding file.
++         if 0:
++             nfd.write(
++                 '''
++       def _translate_%s(self, translated_yang_obj=None):
++         """
++         Translate method. This can only be called after object pointing to "self" is instantiated.
++ 
++         Most of the times, for each yang list instance in the source, we may need to create
++         a yang list instance in the translated-yang-object. Use the "add" API to create the yang list
++         instance.
++         For ex:
++             To add a srv6 locator instance:
++                 loc1 = segripv6.srv6Locators.srv6Locator.add(locatorName=listInst.name)
++ 
++             To iterate over list instances:
++                 for k, listInst in segripv6.srv6Locators.srv6Locator.iteritems():
++                     -- Use this for APP business logic.
++ 
++         We need to add translation logic only for non-key leaves.
++         Keys are already added as part of yang list instance creation
++         """
++         ''' % safe_name(parent.arg))
++ 
++             for i in elements:
++                 if (i["origtype"] == 'container'):
++                     nfd.write(
++                     '''
++         self.%s._translate_%s(translated_yang_obj)
++             ''' % (i["name"], i["name"]))
++ 
++                 elif (i["origtype"] == 'list'):
++                     nfd.write(
++                     '''
++         for k, listInst in self.%s.iteritems():
++             listInst._translate_%s(translated_yang_obj)
++             ''' % (i["name"], i["name"]))
++ 
++                 else:
++                     if not (keyval and  i["yang_name"]  in keyval):
++                         # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
++                         nfd.write(
++                     '''
++         if self.%s._changed():
++             self.%s = self.%s
++             ''' % (i["name"], i["name"], i["name"]))
++ 
++             nfd.write( '''
++         return translated_yang_obj\n''')
++ 
++         curr_func = (path if not path == "" else "/%s" % parent.arg)
++         curr_func = safe_name(curr_func.replace("/", "_"))
++         #print("curr_func:", curr_func)
++ 
++         tfd.write(
++             '''
++ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
++     """
++     Translate method. This can only be called after object pointing to "self" is instantiated.
++     This is mapped to Yang variable %s
++ 
++     Most of the times, for each yang list instance in the source, we may need to create
++     a yang list instance in the translated-yang-object. Use the "add" API to create the yang list
++     instance.
++     For ex:
++         To add a srv6 locator instance:
++             loc1 = segripv6.srv6Locators.srv6Locator.add(locatorName=listInst.name)
++ 
++         To iterate over list instances:
++             for k, listInst in segripv6.srv6Locators.srv6Locator.iteritems():
++                 -- Use this for APP business logic.
++ 
++     We need to add translation logic only for non-key leaves.
++     Keys are already added as part of yang list instance creation
++     """
++     ''' % (curr_func, curr_class_name, (path if not path == "" else "/%s" % parent.arg)))
++ 
++         for i in elements:
++             curr_ifunc = i["path"]
++             curr_ifunc = safe_name(curr_ifunc.replace("/", "_"))
++ 
++             if (i["origtype"] == 'container'):
++                 tfd.write(
++                 '''
++     innerobj = _translate_%s(input_yang_obj.%s, translated_yang_obj)
++         ''' % (curr_ifunc, i["name"]))
++ 
++             elif (i["origtype"] == 'list'):
++                 tfd.write(
++                 '''
++     for k, listInst in input_yang_obj.%s.iteritems():
++         innerobj = _translate_%s(listInst, translated_yang_obj)
++         ''' % (i["name"], curr_ifunc))
++ 
++             else:
++                 if not (keyval and  i["yang_name"]  in keyval):
++                     # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
++                     tfd.write(
++                 '''
++     if input_yang_obj.%s._changed():
++         input_yang_obj.%s = input_yang_obj.%s
++         ''' % (i["name"], i["name"], i["name"]))
++ 
++         tfd.write( '''
++     return translated_yang_obj\n''')
++ 
++ 
++ 
+          # For each element, write out a getter and setter method - with the doc
+          # string of the element within the model.
+          for i in elements:
+***************
+*** 1172,1181 ****
+              elif not parent_cfg:
+                  rw = False
+  
+              if not rw:
+-                 nfd.write("""  %s = __builtin__.property(_get_%s)\n""" % (i["name"], i["name"]))
+              else:
+-                 nfd.write("""  %s = __builtin__.property(_get_%s, _set_%s)\n""" % (i["name"], i["name"], i["name"]))
+      nfd.write("\n")
+  
+      # Store a list of the choices that are included within this module such that
+--- 1311,1325 ----
+              elif not parent_cfg:
+                  rw = False
+  
++             if (i["origtype"] == 'container') or (i["origtype"] == 'list'):
++                 typestr = " # type: %s" % (i["type"])
++             else:
++                 typestr = ""
++ 
+              if not rw:
++                 nfd.write("""  %s = __builtin__.property(_get_%s)%s\n""" % (i["name"], i["name"], typestr))
+              else:
++                 nfd.write("""  %s = __builtin__.property(_get_%s, _set_%s)%s\n""" % (i["name"], i["name"], i["name"], typestr))
+      nfd.write("\n")
+  
+      # Store a list of the choices that are included within this module such that
+***************
+*** 1188,1198 ****
+      try:
+          nfd.flush()
+          os.fsync(nfd.fileno())
+      except OSError:
+          pass
+  
+      if ctx.opts.split_class_dir:
+          nfd.close()
+  
+      return None
+  
+--- 1332,1345 ----
+      try:
+          nfd.flush()
+          os.fsync(nfd.fileno())
++         tfd.flush()
++         os.fsync(tfd.fileno())
+      except OSError:
+          pass
+  
+      if ctx.opts.split_class_dir:
+          nfd.close()
++         tfd.close()
+  
+      return None
+  

@@ -29,6 +29,7 @@ from decimal import Decimal
 import regex
 import six
 from bitarray import bitarray
+from lxml.objectify import StringElement
 
 # Words that could turn up in YANG definition files that are actually
 # reserved names in Python, such as being builtin types. This list is
@@ -296,11 +297,21 @@ def RestrictedClassType(*args, **kwargs):
 
             def match_pattern_check(regexp):
 
-                def mp_check(value):
+                def mp_check_old(value):
                     if not isinstance(value, six.string_types + (six.text_type,)):
                         return False
                     if regex.match(convert_regexp(regexp), value):
                         return True
+                    return False
+
+                def mp_check(value):
+                    if isinstance(value, six.string_types + (six.text_type,)):
+                        if regex.match(convert_regexp(regexp), value):
+                            return True
+                    elif isinstance(value, StringElement):
+                        if isinstance(value.text, six.string_types + (six.text_type,)):
+                            if regex.match(convert_regexp(regexp), value.text):
+                                return True
                     return False
 
                 return mp_check
@@ -997,6 +1008,7 @@ def YANGDynClass(*args, **kwargs):
         "_yang_type",
         "_defining_module",
         "_metadata",
+        "_metadata_ns",
         "_is_config",
         "_cpresent",
         "_presence",
@@ -1055,6 +1067,7 @@ def YANGDynClass(*args, **kwargs):
             self._yang_type = yang_type
             self._defining_module = defining_module
             self._metadata = {}
+            self._metadata_ns = {}
             self._presence = has_presence
             self._cpresent = False
 
@@ -1142,6 +1155,12 @@ def YANGDynClass(*args, **kwargs):
 
         def _add_metadata(self, k, v):
             self._metadata[k] = v
+
+        def _add_metadata_ns(self, k, k_ns, v):
+            self._metadata_ns[(k, k_ns)] = v
+
+        def get_metadata_ns(self):
+            return self._metadata_ns
 
         def yang_name(self):
             return self._yang_name

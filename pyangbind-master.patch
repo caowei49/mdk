@@ -1,0 +1,602 @@
+diff -rNu pyangbind-master/pyangbind/lib/serialise.py pyangbind-master_release_Hackathon/pyangbind/lib/serialise.py
+--- pyangbind-master/pyangbind/lib/serialise.py	2018-08-25 02:08:09.000000000 +0800
++++ pyangbind-master_release_Hackathon/pyangbind/lib/serialise.py	2019-07-10 17:15:02.537109300 +0800
+@@ -93,6 +93,7 @@
+                 index += 1
+         else:
+             nd = d
++
+         return nd
+ 
+     def default(self, obj):
+@@ -321,42 +322,82 @@
+ 
+     @classmethod
+     def generate_xml_tree(cls, module_name, module_namespace, tree):
++
+         """Map the IETF structured, and value-processed, object tree into an lxml objectify object"""
++
++        def add_attributes(ele, attrlist):
++            if attrlist is None:
++                return
++
++            for key, value in (attrlist.items()):
++                md_name, md_ns = key
++                attrname = "{%s}%s" % (md_ns, md_name)
++                attr = ele.set(attrname,value)
++            return
++
+         doc = pybindIETFXMLEncoder.EMF(namespace=module_namespace)(module_name)
+ 
++        attrlist = tree[0]
++        tree = tree[1]
++        add_attributes(doc, attrlist)
++
++
+         def aux(parent, root):
++
++            attrlist = None
++
+             for k, v in root.items():
+                 k, nsmap = k
+                 E = pybindIETFXMLEncoder.EMF(nsmap=dict(nsmap))
++
++                if (len(v) == 2):
++                    attrlist = v[0]
++                    v = v[1]
++
+                 if isinstance(v, SerialisedTypedList):
+                     # TypedList (e.g. leaf-list or union-list), process each element as a sibling
++                    count = 0
+                     for i in v:
+                         el = E(k, str(i))
++                        count = count + 1
++                        add_attributes(el, attrlist[count])
+                         parent.append(el)
++
+                 elif isinstance(v, list):
+                     # a container maps to a list, recursively process each element as a child element
++                    count = 0
+                     for i in v:
+                         el = E(k)
++                        add_attributes(el, attrlist[count])
+                         parent.append(el)
+                         aux(el, i)
++                        count = count + 1
+                 elif isinstance(v, dict):
+                     el = E(k)
++                    add_attributes(el, attrlist)
+                     parent.append(el)
+                     aux(el, v)
+                 elif v is None:
+                     el = E(k)
++                    add_attributes(el, attrlist)
+                     parent.append(el)
+                 elif isinstance(v, bool):
+                     _v = str(v).lower()
+-                    parent.append(E(k, _v))
++                    el = E(k, _v)
++                    add_attributes(el, attrlist)
++                    parent.append(el)
+                 else:
+-                    parent.append(E(k, str(v)))
++                    el = E(k, str(v))
++                    add_attributes(el, attrlist)
++                    parent.append(el)
+ 
+         aux(doc, tree)
+         return doc
+ 
+     @staticmethod
+     def yname_ns_func(parent_namespace, element, yname):
++        attr_map = [(None, None)]
++
+         # to keeps things simple, we augment every key with a complete namespace map
+         ns_map = [(None, element._namespace)]
+         if element._yang_type == "identityref" and element._changed():
+@@ -364,6 +405,7 @@
+             ns_map.append(
+                 (element._enumeration_dict[element]["@module"], element._enumeration_dict[element]["@namespace"])
+             )
++
+         return yname, tuple(ns_map)
+ 
+     @classmethod
+@@ -380,7 +422,6 @@
+         doc = cls.encode(obj, filter=filter)
+         return etree.tostring(doc, pretty_print=pretty_print).decode("utf8")
+ 
+-
+ def make_generate_ietf_tree(yname_ns_func):
+     """
+     Convert a pyangbind class to a format which encodes to the IETF JSON
+@@ -397,7 +438,7 @@
+     Resulting namespaced key names can be customised via *yname_func*
+     """
+ 
+-    def generate_ietf_tree(obj, parent_namespace=None, flt=False, with_defaults=None):
++    def generate_ietf_tree_old(obj, parent_namespace=None, flt=False, with_defaults=None):
+         generated_by = getattr(obj, "_pybind_generated_by", None)
+         if generated_by == "YANGListType":
+             return [generate_ietf_tree(i, flt=flt, with_defaults=with_defaults) for i in obj.itervalues()]
+@@ -441,14 +482,101 @@
+                         d[yname] = element
+         return d
+ 
++    def generate_ietf_tree(obj, parent_namespace=None, flt=False, with_defaults=None):
++
++        metadatalist = []
++        generated_by = getattr(obj, "_pybind_generated_by", None)
++
++        if generated_by == "YANGListType":
++            #return [generate_ietf_tree(i, flt=flt, with_defaults=with_defaults) for i in obj.itervalues()]
++            list = []
++            attrlist = []
++            for i in obj.itervalues():
++                innerattr, inner_d = generate_ietf_tree(i, flt=flt, with_defaults=with_defaults)
++                list.append(inner_d)
++                attrlist.append(innerattr)
++            return [attrlist, list]
++
++        elif generated_by is None:
++            # This is an element that is not specifically generated by
++            # pyangbind, so we simply serialise it how we would if it
++            # were a scalar.
++            return [], obj
++
++        attr_map = []
++
++        d = {}
++        for element_name in obj._pyangbind_elements:
++
++            element = getattr(obj, element_name, None)
++            yang_name = getattr(element, "yang_name", None)
++            yname = yang_name() if yang_name is not None else element_name
++
++            generated_by = getattr(element, "_pybind_generated_by", None)
++
++            # adjust yname, if necessary, given the current namespace context
++            yname = yname_ns_func(parent_namespace, element, yname)
++
++            if generated_by == "container":
++                d[yname] = generate_ietf_tree(
++                    element, parent_namespace=element._namespace, flt=flt, with_defaults=with_defaults
++                )
++                val = d[yname][1]
++                if not len(val):
++                    del d[yname]
++            elif generated_by == "YANGListType":
++                list = []
++                attrlist = []
++                for i in element.itervalues():
++                    innerattr, inner_d = generate_ietf_tree(i, parent_namespace=element._namespace, flt=flt, with_defaults=with_defaults)
++                    list.append(inner_d)
++                    attrlist.append(innerattr)
++
++                d[yname] = [attrlist, list]
++
++                val = d[yname][1]
++                if not len(val):
++                    del d[yname]
++            else:
++                if hasattr(element, "_metadata_ns"):
++                    metadata = element._metadata_ns.copy()
++                else:
++                    metadata = []
++                if with_defaults is None:
++                    if flt and element._changed():
++                        d[yname] = [metadata, element]
++                    elif not flt:
++                        d[yname] =  [metadata, element]
++                elif with_defaults == WithDefaults.IF_SET:
++                    if element._changed() or element._default == element:
++                        d[yname] =  [metadata, element]
++
++
++        if hasattr(obj, "_metadata_ns"):
++            metadata = obj._metadata_ns.copy()
++        else:
++            metadata = []
++
++        return [metadata, d]
++
+     return generate_ietf_tree
+ 
+ 
++global_ifm_obj = 1
++
+ class pybindIETFXMLDecoder(object):
+     """
+     IETF XML decoder for pybind object tree deserialisation.
+     Use the `decode()` method to return an pyangbind representation of the yang object.
+     """
++    @staticmethod
++    def add_yang_metadata(yangobj, xmlnode):
++        for prop, value in xmlnode.attrib.iteritems():
++            attr_qn = etree.QName(prop)
++            attr_ns, attr_name = attr_qn.namespace, attr_qn.localname
++
++            yangobj._add_metadata_ns(attr_name, attr_ns, value)
++        return
+ 
+     @classmethod
+     def decode(cls, xml, bindings, module_name):
+@@ -457,9 +585,11 @@
+         doc = objectify.fromstring(xml, parser=parser)
+         return cls.load_xml(doc, bindings, module_name)
+ 
++
+     @staticmethod
+     def load_xml(d, parent, yang_base, obj=None, path_helper=None, extmethods=None):
+         """low-level XML deserialisation function, based on pybindJSONDecoder.load_ietf_json()"""
++
+         if obj is None:
+             # we need to find the class to create, as one has not been supplied.
+             base_mod_cls = getattr(parent, safe_name(yang_base))
+@@ -484,6 +614,8 @@
+             qn = etree.QName(child)
+             namespace, ykey = qn.namespace, qn.localname
+ 
++
++
+             # need to look up the key in the object to find out what type it should be,
+             # because we can't tell from the XML structure
+             attr_get = getattr(obj, "_get_%s" % safe_name(ykey), None)
+@@ -492,11 +624,12 @@
+             chobj = attr_get()
+ 
+             if chobj._yang_type == "container":
+-
+                 if hasattr(chobj, "_presence"):
+                     if chobj._presence:
+                         chobj._set_present()
+ 
++                pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
++
+                 pybindIETFXMLDecoder.load_xml(
+                     child, None, None, obj=chobj, path_helper=path_helper, extmethods=extmethods
+                 )
+@@ -517,6 +650,8 @@
+                 else:
+                     nobj = chobj[key_str]
+ 
++                pybindIETFXMLDecoder.add_yang_metadata(yangobj=nobj, xmlnode=child)
++
+                 # now we have created the nested object element, we add other members
+                 pybindIETFXMLDecoder.load_xml(
+                     child, None, None, obj=nobj, path_helper=path_helper, extmethods=extmethods
+@@ -534,12 +669,16 @@
+                 except ValueError:
+                     if six.text_type in chobj._allowed_type:
+                         chobj.append(str(child.pyval))
++                    elif child.text:
++                        # When there is regex check, we need pass the string type and not the actual python type.
++                        chobj.append(child.text)
+                     else:
+                         raise
+-
++                pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
+             else:
+                 if chobj._is_keyval is True:
+                     # we've already added the key
++                    pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
+                     continue
+ 
+                 val = child.text
+@@ -559,6 +698,7 @@
+                         raise AttributeError("Invalid attribute specified in XML - %s" % (ykey))
+                     set_method(val)
+ 
++                pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
+         return obj
+ 
+ 
+diff -rNu pyangbind-master/pyangbind/lib/yangtypes.py pyangbind-master_release_Hackathon/pyangbind/lib/yangtypes.py
+--- pyangbind-master/pyangbind/lib/yangtypes.py	2018-08-25 02:08:09.000000000 +0800
++++ pyangbind-master_release_Hackathon/pyangbind/lib/yangtypes.py	2019-06-25 19:19:35.542458500 +0800
+@@ -29,6 +29,7 @@
+ import regex
+ import six
+ from bitarray import bitarray
++from lxml.objectify import StringElement
+ 
+ # Words that could turn up in YANG definition files that are actually
+ # reserved names in Python, such as being builtin types. This list is
+@@ -296,13 +297,23 @@
+ 
+             def match_pattern_check(regexp):
+ 
+-                def mp_check(value):
++                def mp_check_old(value):
+                     if not isinstance(value, six.string_types + (six.text_type,)):
+                         return False
+                     if regex.match(convert_regexp(regexp), value):
+                         return True
+                     return False
+ 
++                def mp_check(value):
++                    if isinstance(value, six.string_types + (six.text_type,)):
++                        if regex.match(convert_regexp(regexp), value):
++                            return True
++                    elif isinstance(value, StringElement):
++                        if isinstance(value.text, six.string_types + (six.text_type,)):
++                            if regex.match(convert_regexp(regexp), value.text):
++                                return True
++                    return False
++
+                 return mp_check
+ 
+             def in_dictionary_check(dictionary):
+@@ -997,6 +1008,7 @@
+         "_yang_type",
+         "_defining_module",
+         "_metadata",
++        "_metadata_ns",
+         "_is_config",
+         "_cpresent",
+         "_presence",
+@@ -1055,6 +1067,7 @@
+             self._yang_type = yang_type
+             self._defining_module = defining_module
+             self._metadata = {}
++            self._metadata_ns = {}
+             self._presence = has_presence
+             self._cpresent = False
+ 
+@@ -1143,6 +1156,12 @@
+         def _add_metadata(self, k, v):
+             self._metadata[k] = v
+ 
++        def _add_metadata_ns(self, k, k_ns, v):
++            self._metadata_ns[(k, k_ns)] = v
++
++        def get_metadata_ns(self):
++            return self._metadata_ns
++
+         def yang_name(self):
+             return self._yang_name
+ 
+diff -rNu pyangbind-master/pyangbind/plugin/pybind.py pyangbind-master_release_Hackathon/pyangbind/plugin/pybind.py
+--- pyangbind-master/pyangbind/plugin/pybind.py	2018-08-25 02:08:09.000000000 +0800
++++ pyangbind-master_release_Hackathon/pyangbind/plugin/pybind.py	2019-06-27 11:03:26.367139300 +0800
+@@ -407,6 +407,7 @@
+ 
+     # Iterate through the tree which pyang has built, solely for the modules
+     # that pyang was asked to build
++
+     for modname in pyang_called_modules:
+         module = module_d[modname]
+         mods = [module]
+@@ -414,8 +415,9 @@
+             subm = ctx.get_module(i.arg)
+             if subm is not None:
+                 mods.append(subm)
++
+         for m in mods:
+-            children = [ch for ch in module.i_children if ch.keyword in statements.data_definition_keywords]
++            children = [ch for ch in m.i_children if ch.keyword in statements.data_definition_keywords]
+             get_children(ctx, fd, children, m, m)
+ 
+             if ctx.opts.build_rpcs:
+@@ -662,11 +664,23 @@
+     # When pyangbind was asked to split classes, then we need to create the
+     # relevant directories for the modules to be created into. In this case
+     # even though fd might be a valid file handle, we ignore it.
++
++
++
++    #print('pybind_split_basepath:',ctx.pybind_split_basepath)
++
+     if ctx.opts.split_class_dir:
+         if path == "":
++            """module_path = ctx.pybind_split_basepath + "/"  + safe_name(module.arg)
++            if not os.path.exists(module_path):
++                print('created %s',module_path)
++                os.makedirs(module_path)
++            fpath =  module_path + "/__init__.py"
++			"""
+             fpath = ctx.pybind_split_basepath + "/__init__.py"
+         else:
+             pparts = path.split("/")
++            #npath = "/" + safe_name(module.arg) + "/"
+             npath = "/"
+ 
+             # Check that we don't have the problem of containers that are nested
+@@ -684,6 +698,10 @@
+             if not os.path.exists(bpath):
+                 os.makedirs(bpath)
+             fpath = bpath + "/__init__.py"
++            #print('npath:', npath)
++
++        #print('fpath:', fpath)
++
+         if not os.path.exists(fpath):
+             try:
+                 if six.PY3:
+@@ -706,6 +724,13 @@
+         # provided.
+         nfd = fd
+ 
++    tfpath = os.getcwd() + ("/_translate_%s_obj.py" % safe_name(module.arg))
++    #print("tfpath:", tfpath)
++    if six.PY3:
++        tfd = open(tfpath, "a", encoding="utf-8")
++    else:
++        tfd = codecs.open(tfpath, "a", encoding="utf-8")
++
+     if parent_cfg:
+         # The first time we find a container that has config false set on it
+         # then we need to hand this down the tree - we don't need to look if
+@@ -775,17 +800,23 @@
+ 
+     # 'container', 'module', 'list' and 'submodule' all have their own classes
+     # generated.
+-    if parent.keyword in ["container", "module", "list", "submodule", "input", "output", "rpc", "notification"]:
++
++    curr_class_name = ""
++
++    if parent.keyword in ["container", "module", "list", "submodule", "input", "output", "rpc", "notification", "action"]:
+         if ctx.opts.split_class_dir:
+             nfd.write("class %s(PybindBase):\n" % safe_name(parent.arg))
++            curr_class_name = safe_name(parent.arg)
+         else:
+             if not path == "":
+                 nfd.write(
+                     "class yc_%s_%s_%s(PybindBase):\n"
+                     % (safe_name(parent.arg), safe_name(module.arg), safe_name(path.replace("/", "_")))
+                 )
++                curr_class_name = "yc_%s_%s_%s" % (safe_name(parent.arg), safe_name(module.arg), safe_name(path.replace("/", "_")))
+             else:
+                 nfd.write("class %s(PybindBase):\n" % safe_name(parent.arg))
++                curr_class_name = safe_name(parent.arg)
+ 
+         # If the container is actually a list, then determine what the key value
+         # is and store this such that we can give a hint.
+@@ -1077,6 +1108,114 @@
+             % path.split("/")[1:]
+         )
+ 
++        #For now , no need to add this translate logic inside the python binding file.
++        if 0:
++            nfd.write(
++                '''
++      def _translate_%s(self, translated_yang_obj=None):
++        """
++        Translate method. This can only be called after object pointing to "self" is instantiated.
++
++        Most of the times, for each yang list instance in the source, we may need to create
++        a yang list instance in the translated-yang-object. Use the "add" API to create the yang list
++        instance.
++        For ex:
++            To add a srv6 locator instance:
++                loc1 = segripv6.srv6Locators.srv6Locator.add(locatorName=listInst.name)
++
++            To iterate over list instances:
++                for k, listInst in segripv6.srv6Locators.srv6Locator.iteritems():
++                    -- Use this for APP business logic.
++
++        We need to add translation logic only for non-key leaves.
++        Keys are already added as part of yang list instance creation
++        """
++        ''' % safe_name(parent.arg))
++
++            for i in elements:
++                if (i["origtype"] == 'container'):
++                    nfd.write(
++                    '''
++        self.%s._translate_%s(translated_yang_obj)
++            ''' % (i["name"], i["name"]))
++
++                elif (i["origtype"] == 'list'):
++                    nfd.write(
++                    '''
++        for k, listInst in self.%s.iteritems():
++            listInst._translate_%s(translated_yang_obj)
++            ''' % (i["name"], i["name"]))
++
++                else:
++                    if not (keyval and  i["yang_name"]  in keyval):
++                        # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
++                        nfd.write(
++                    '''
++        if self.%s._changed():
++            self.%s = self.%s
++            ''' % (i["name"], i["name"], i["name"]))
++
++            nfd.write( '''
++        return translated_yang_obj\n''')
++
++        curr_func = (path if not path == "" else "/%s" % parent.arg)
++        curr_func = safe_name(curr_func.replace("/", "_"))
++        #print("curr_func:", curr_func)
++
++        tfd.write(
++            '''
++def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
++    """
++    Translate method. This can only be called after object pointing to "self" is instantiated.
++    This is mapped to Yang variable %s
++
++    Most of the times, for each yang list instance in the source, we may need to create
++    a yang list instance in the translated-yang-object. Use the "add" API to create the yang list
++    instance.
++    For ex:
++        To add a srv6 locator instance:
++            loc1 = segripv6.srv6Locators.srv6Locator.add(locatorName=listInst.name)
++
++        To iterate over list instances:
++            for k, listInst in segripv6.srv6Locators.srv6Locator.iteritems():
++                -- Use this for APP business logic.
++
++    We need to add translation logic only for non-key leaves.
++    Keys are already added as part of yang list instance creation
++    """
++    ''' % (curr_func, curr_class_name, (path if not path == "" else "/%s" % parent.arg)))
++
++        for i in elements:
++            curr_ifunc = i["path"]
++            curr_ifunc = safe_name(curr_ifunc.replace("/", "_"))
++
++            if (i["origtype"] == 'container'):
++                tfd.write(
++                '''
++    innerobj = _translate_%s(input_yang_obj.%s, translated_yang_obj)
++        ''' % (curr_ifunc, i["name"]))
++
++            elif (i["origtype"] == 'list'):
++                tfd.write(
++                '''
++    for k, listInst in input_yang_obj.%s.iteritems():
++        innerobj = _translate_%s(listInst, translated_yang_obj)
++        ''' % (i["name"], curr_ifunc))
++
++            else:
++                if not (keyval and  i["yang_name"]  in keyval):
++                    # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
++                    tfd.write(
++                '''
++    if input_yang_obj.%s._changed():
++        input_yang_obj.%s = input_yang_obj.%s
++        ''' % (i["name"], i["name"], i["name"]))
++
++        tfd.write( '''
++    return translated_yang_obj\n''')
++
++
++
+         # For each element, write out a getter and setter method - with the doc
+         # string of the element within the model.
+         for i in elements:
+@@ -1172,10 +1311,15 @@
+             elif not parent_cfg:
+                 rw = False
+ 
++            if (i["origtype"] == 'container') or (i["origtype"] == 'list'):
++                typestr = " # type: %s" % (i["type"])
++            else:
++                typestr = ""
++
+             if not rw:
+-                nfd.write("""  %s = __builtin__.property(_get_%s)\n""" % (i["name"], i["name"]))
++                nfd.write("""  %s = __builtin__.property(_get_%s)%s\n""" % (i["name"], i["name"], typestr))
+             else:
+-                nfd.write("""  %s = __builtin__.property(_get_%s, _set_%s)\n""" % (i["name"], i["name"], i["name"]))
++                nfd.write("""  %s = __builtin__.property(_get_%s, _set_%s)%s\n""" % (i["name"], i["name"], i["name"], typestr))
+     nfd.write("\n")
+ 
+     # Store a list of the choices that are included within this module such that
+@@ -1188,11 +1332,14 @@
+     try:
+         nfd.flush()
+         os.fsync(nfd.fileno())
++        tfd.flush()
++        os.fsync(tfd.fileno())
+     except OSError:
+         pass
+ 
+     if ctx.opts.split_class_dir:
+         nfd.close()
++        tfd.close()
+ 
+     return None
+ 

@@ -93,6 +93,7 @@ class YangDataSerialiser(object):
                 index += 1
         else:
             nd = d
+
         return nd
 
     def default(self, obj):
@@ -321,42 +322,82 @@ class pybindIETFXMLEncoder(object):
 
     @classmethod
     def generate_xml_tree(cls, module_name, module_namespace, tree):
+
         """Map the IETF structured, and value-processed, object tree into an lxml objectify object"""
+
+        def add_attributes(ele, attrlist):
+            if attrlist is None:
+                return
+
+            for key, value in (attrlist.items()):
+                md_name, md_ns = key
+                attrname = "{%s}%s" % (md_ns, md_name)
+                attr = ele.set(attrname,value)
+            return
+
         doc = pybindIETFXMLEncoder.EMF(namespace=module_namespace)(module_name)
 
+        attrlist = tree[0]
+        tree = tree[1]
+        add_attributes(doc, attrlist)
+
+
         def aux(parent, root):
+
+            attrlist = None
+
             for k, v in root.items():
                 k, nsmap = k
                 E = pybindIETFXMLEncoder.EMF(nsmap=dict(nsmap))
+
+                if (len(v) == 2):
+                    attrlist = v[0]
+                    v = v[1]
+
                 if isinstance(v, SerialisedTypedList):
                     # TypedList (e.g. leaf-list or union-list), process each element as a sibling
+                    count = 0
                     for i in v:
                         el = E(k, str(i))
+                        count = count + 1
+                        add_attributes(el, attrlist[count])
                         parent.append(el)
+
                 elif isinstance(v, list):
                     # a container maps to a list, recursively process each element as a child element
+                    count = 0
                     for i in v:
                         el = E(k)
+                        add_attributes(el, attrlist[count])
                         parent.append(el)
                         aux(el, i)
+                        count = count + 1
                 elif isinstance(v, dict):
                     el = E(k)
+                    add_attributes(el, attrlist)
                     parent.append(el)
                     aux(el, v)
                 elif v is None:
                     el = E(k)
+                    add_attributes(el, attrlist)
                     parent.append(el)
                 elif isinstance(v, bool):
                     _v = str(v).lower()
-                    parent.append(E(k, _v))
+                    el = E(k, _v)
+                    add_attributes(el, attrlist)
+                    parent.append(el)
                 else:
-                    parent.append(E(k, str(v)))
+                    el = E(k, str(v))
+                    add_attributes(el, attrlist)
+                    parent.append(el)
 
         aux(doc, tree)
         return doc
 
     @staticmethod
     def yname_ns_func(parent_namespace, element, yname):
+        attr_map = [(None, None)]
+
         # to keeps things simple, we augment every key with a complete namespace map
         ns_map = [(None, element._namespace)]
         if element._yang_type == "identityref" and element._changed():
@@ -364,6 +405,7 @@ class pybindIETFXMLEncoder(object):
             ns_map.append(
                 (element._enumeration_dict[element]["@module"], element._enumeration_dict[element]["@namespace"])
             )
+
         return yname, tuple(ns_map)
 
     @classmethod
@@ -379,7 +421,6 @@ class pybindIETFXMLEncoder(object):
         """return the complete XML document, as pretty-printed string"""
         doc = cls.encode(obj, filter=filter)
         return etree.tostring(doc, pretty_print=pretty_print).decode("utf8")
-
 
 def make_generate_ietf_tree(yname_ns_func):
     """
@@ -397,7 +438,7 @@ def make_generate_ietf_tree(yname_ns_func):
     Resulting namespaced key names can be customised via *yname_func*
     """
 
-    def generate_ietf_tree(obj, parent_namespace=None, flt=False, with_defaults=None):
+    def generate_ietf_tree_old(obj, parent_namespace=None, flt=False, with_defaults=None):
         generated_by = getattr(obj, "_pybind_generated_by", None)
         if generated_by == "YANGListType":
             return [generate_ietf_tree(i, flt=flt, with_defaults=with_defaults) for i in obj.itervalues()]
@@ -441,14 +482,101 @@ def make_generate_ietf_tree(yname_ns_func):
                         d[yname] = element
         return d
 
+    def generate_ietf_tree(obj, parent_namespace=None, flt=False, with_defaults=None):
+
+        metadatalist = []
+        generated_by = getattr(obj, "_pybind_generated_by", None)
+
+        if generated_by == "YANGListType":
+            #return [generate_ietf_tree(i, flt=flt, with_defaults=with_defaults) for i in obj.itervalues()]
+            list = []
+            attrlist = []
+            for i in obj.itervalues():
+                innerattr, inner_d = generate_ietf_tree(i, flt=flt, with_defaults=with_defaults)
+                list.append(inner_d)
+                attrlist.append(innerattr)
+            return [attrlist, list]
+
+        elif generated_by is None:
+            # This is an element that is not specifically generated by
+            # pyangbind, so we simply serialise it how we would if it
+            # were a scalar.
+            return [], obj
+
+        attr_map = []
+
+        d = {}
+        for element_name in obj._pyangbind_elements:
+
+            element = getattr(obj, element_name, None)
+            yang_name = getattr(element, "yang_name", None)
+            yname = yang_name() if yang_name is not None else element_name
+
+            generated_by = getattr(element, "_pybind_generated_by", None)
+
+            # adjust yname, if necessary, given the current namespace context
+            yname = yname_ns_func(parent_namespace, element, yname)
+
+            if generated_by == "container":
+                d[yname] = generate_ietf_tree(
+                    element, parent_namespace=element._namespace, flt=flt, with_defaults=with_defaults
+                )
+                val = d[yname][1]
+                if not len(val):
+                    del d[yname]
+            elif generated_by == "YANGListType":
+                list = []
+                attrlist = []
+                for i in element.itervalues():
+                    innerattr, inner_d = generate_ietf_tree(i, parent_namespace=element._namespace, flt=flt, with_defaults=with_defaults)
+                    list.append(inner_d)
+                    attrlist.append(innerattr)
+
+                d[yname] = [attrlist, list]
+
+                val = d[yname][1]
+                if not len(val):
+                    del d[yname]
+            else:
+                if hasattr(element, "_metadata_ns"):
+                    metadata = element._metadata_ns.copy()
+                else:
+                    metadata = []
+                if with_defaults is None:
+                    if flt and element._changed():
+                        d[yname] = [metadata, element]
+                    elif not flt:
+                        d[yname] =  [metadata, element]
+                elif with_defaults == WithDefaults.IF_SET:
+                    if element._changed() or element._default == element:
+                        d[yname] =  [metadata, element]
+
+
+        if hasattr(obj, "_metadata_ns"):
+            metadata = obj._metadata_ns.copy()
+        else:
+            metadata = []
+
+        return [metadata, d]
+
     return generate_ietf_tree
 
+
+global_ifm_obj = 1
 
 class pybindIETFXMLDecoder(object):
     """
     IETF XML decoder for pybind object tree deserialisation.
     Use the `decode()` method to return an pyangbind representation of the yang object.
     """
+    @staticmethod
+    def add_yang_metadata(yangobj, xmlnode):
+        for prop, value in xmlnode.attrib.iteritems():
+            attr_qn = etree.QName(prop)
+            attr_ns, attr_name = attr_qn.namespace, attr_qn.localname
+
+            yangobj._add_metadata_ns(attr_name, attr_ns, value)
+        return
 
     @classmethod
     def decode(cls, xml, bindings, module_name):
@@ -457,9 +585,11 @@ class pybindIETFXMLDecoder(object):
         doc = objectify.fromstring(xml, parser=parser)
         return cls.load_xml(doc, bindings, module_name)
 
+
     @staticmethod
     def load_xml(d, parent, yang_base, obj=None, path_helper=None, extmethods=None):
         """low-level XML deserialisation function, based on pybindJSONDecoder.load_ietf_json()"""
+
         if obj is None:
             # we need to find the class to create, as one has not been supplied.
             base_mod_cls = getattr(parent, safe_name(yang_base))
@@ -484,6 +614,8 @@ class pybindIETFXMLDecoder(object):
             qn = etree.QName(child)
             namespace, ykey = qn.namespace, qn.localname
 
+
+
             # need to look up the key in the object to find out what type it should be,
             # because we can't tell from the XML structure
             attr_get = getattr(obj, "_get_%s" % safe_name(ykey), None)
@@ -492,10 +624,11 @@ class pybindIETFXMLDecoder(object):
             chobj = attr_get()
 
             if chobj._yang_type == "container":
-
                 if hasattr(chobj, "_presence"):
                     if chobj._presence:
                         chobj._set_present()
+
+                pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
 
                 pybindIETFXMLDecoder.load_xml(
                     child, None, None, obj=chobj, path_helper=path_helper, extmethods=extmethods
@@ -517,6 +650,8 @@ class pybindIETFXMLDecoder(object):
                 else:
                     nobj = chobj[key_str]
 
+                pybindIETFXMLDecoder.add_yang_metadata(yangobj=nobj, xmlnode=child)
+
                 # now we have created the nested object element, we add other members
                 pybindIETFXMLDecoder.load_xml(
                     child, None, None, obj=nobj, path_helper=path_helper, extmethods=extmethods
@@ -534,12 +669,16 @@ class pybindIETFXMLDecoder(object):
                 except ValueError:
                     if six.text_type in chobj._allowed_type:
                         chobj.append(str(child.pyval))
+                    elif child.text:
+                        # When there is regex check, we need pass the string type and not the actual python type.
+                        chobj.append(child.text)
                     else:
                         raise
-
+                pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
             else:
                 if chobj._is_keyval is True:
                     # we've already added the key
+                    pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
                     continue
 
                 val = child.text
@@ -559,6 +698,7 @@ class pybindIETFXMLDecoder(object):
                         raise AttributeError("Invalid attribute specified in XML - %s" % (ykey))
                     set_method(val)
 
+                pybindIETFXMLDecoder.add_yang_metadata(yangobj=chobj, xmlnode=child)
         return obj
 
 
