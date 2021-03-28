@@ -1,9 +1,0 @@
-{
-    "interfaces": {
-        "interface": {
-            "eth0": {
-                "name": "eth0"
-            }
-        }
-    }
-}
