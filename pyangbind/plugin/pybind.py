@@ -1212,12 +1212,21 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
         ''' % (curr_ifunc, i["name"]))
 
             elif (i["origtype"] == 'list'):
+              target_path = Mapping_rules.get(i["path"])
+              if has_mapping_file == True and target_path is not None:
+                target_path = target_path.replace("/", ".")
+                tfd.write(
+                  '''
+    for k, listInst in input_yang_obj.%s.iteritems():
+        innerobj = translated_yang_obj%s.add(k)
+        _translate_%s(listInst, innerobj)
+          ''' % (i["name"], target_path,  curr_ifunc))
+              else:
                 tfd.write(
                 '''
     for k, listInst in input_yang_obj.%s.iteritems():
         innerobj = _translate_%s(listInst, translated_yang_obj)
         ''' % (i["name"], curr_ifunc))
-
             else:
                 if not (keyval and  i["yang_name"]  in keyval):
                     # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
