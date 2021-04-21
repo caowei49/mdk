@@ -24,6 +24,7 @@ from __future__ import unicode_literals
 
 import copy
 import decimal
+import json
 import optparse
 import os
 import sys
@@ -277,6 +278,12 @@ class PyangBindClass(plugin.PyangPlugin):
                                   notifications defined in each
                                   module. These are placed at
                                   the root of each module""",
+        ),
+        option_group.add_option(
+          "--mapping-rules",
+          dest="mapping_rules",
+          action="store",
+          help="""Use mapping rules to generate the translation template""",
         ),
         optparser.add_option_group(option_group)
 
@@ -665,9 +672,18 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
     # relevant directories for the modules to be created into. In this case
     # even though fd might be a valid file handle, we ignore it.
 
+    # deal with the mapping rules, to generate the translation template
+    has_mapping_file = False
+    Mapping_rules = None
+    if ctx.opts.mapping_rules:
+      try:
+        with open(ctx.opts.mapping_rules, 'r') as f:
+          Mapping_rules = json.load(f)
+        has_mapping_file = True
+      except IOError as m:
+        raise IOError("could not open pyangbind output file (%s)" % m)
 
 
-    #print('pybind_split_basepath:',ctx.pybind_split_basepath)
 
     if ctx.opts.split_class_dir:
         if path == "":
@@ -1205,12 +1221,20 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
             else:
                 if not (keyval and  i["yang_name"]  in keyval):
                     # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
-                    tfd.write(
+                    target_path = Mapping_rules.get(i["path"])
+                    if has_mapping_file == True and target_path is not None:
+                      target_node = target_path[target_path.rfind('/')+1:]
+                      tfd.write(
+                        '''
+    if input_yang_obj.%s._changed():
+        translated_yang_obj.%s = input_yang_obj.%s
+        ''' % (i["name"], target_node, i["name"]))
+                    else:
+                      tfd.write(
                 '''
     if input_yang_obj.%s._changed():
         input_yang_obj.%s = input_yang_obj.%s
         ''' % (i["name"], i["name"], i["name"]))
-
         tfd.write( '''
     return translated_yang_obj\n''')
 
