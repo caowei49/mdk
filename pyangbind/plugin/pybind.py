@@ -24,10 +24,10 @@ from __future__ import unicode_literals
 
 import copy
 import decimal
-import json
 import optparse
 import os
 import sys
+import json
 from collections import OrderedDict
 
 import six
@@ -186,6 +186,60 @@ INT_RANGE_TYPES = ["uint8", "uint16", "uint32", "uint64", "int8", "int16", "int3
 # The types that are built-in to YANG
 YANG_BUILTIN_TYPES = list(class_map.keys()) + ["container", "list", "rpc", "notification", "leafref"]
 
+# a class to interpret schema mount config file if it is used
+class schema_mount_config():
+  file_source = ''
+
+  body = []
+
+  namespace = []
+
+  mount_point = {}
+
+  module_list = {}
+
+  module_revision_list = {}
+
+  to_pre_load_modules = []
+
+  schema = []
+
+  def __init__(self, file_source):
+    self.file_source = file_source
+    f = open(file_source, encoding='utf-8')
+    schema_mount_cfg = json.loads(f.read())
+    self.body = schema_mount_cfg['ietf-yang-schema-mount:schema-mounts']  # 应该使用try
+    self.namespace = self.body['namespace']
+    self.mount_point = self.body['mount-point']
+    self.schema = self.body['schema']
+
+    for schema in self.schema:
+      name = schema['name']  # schema的名称
+      mounted_modules = []
+      for m in schema['module']:
+        mounted_modules.append(m['name'])
+        self.to_pre_load_modules.append(m['name'])
+      self.module_list[name] = mounted_modules
+
+  def add_args(self):
+    for m in self.to_pre_load_modules:
+      idx = self.file_source.rfind('/')
+      home_source = self.file_source[:idx + 1]
+      sys.argv.append("%s%s.yang" % (home_source, m))
+
+  def load_from_sys_arg(self):
+    pass
+
+  def find_module_revision_list(self):
+    for s in self.schema:
+      name = s['name']
+      module_revision_list = {}
+      mounted_module_revision = []
+      for m in s['module']:
+        mounted_module_revision.append((m['name'], m['revision']))
+      module_revision_list[name] = mounted_module_revision
+    return module_revision_list
+
 
 # Base machinery to support operation as a plugin to pyang.
 def pyang_plugin_init():
@@ -280,12 +334,16 @@ class PyangBindClass(plugin.PyangPlugin):
                                   the root of each module""",
         ),
         option_group.add_option(
-          "--mapping-rules",
-          dest="mapping_rules",
-          action="store",
-          help="""Use mapping rules to generate the translation template""",
+          "--schema-mount",
+          help="""use schema mount""",
         ),
         optparser.add_option_group(option_group)
+        # to append module list in schema mount config file in to sys.argv so that pyang can preload the modules
+        if '--schema-mount' in sys.argv:
+          idx = sys.argv.index('--schema-mount')
+          file_source = sys.argv[idx + 1]
+          sm_cfg = schema_mount_config(file_source)
+          sm_cfg.add_args()
 
 
 # Core function to build the pyangbind output - starting with building the
@@ -672,18 +730,9 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
     # relevant directories for the modules to be created into. In this case
     # even though fd might be a valid file handle, we ignore it.
 
-    # deal with the mapping rules, to generate the translation template
-    has_mapping_file = False
-    Mapping_rules = None
-    if ctx.opts.mapping_rules:
-      try:
-        with open(ctx.opts.mapping_rules, 'r') as f:
-          Mapping_rules = json.load(f)
-        has_mapping_file = True
-      except IOError as m:
-        raise IOError("could not open pyangbind output file (%s)" % m)
 
 
+    #print('pybind_split_basepath:',ctx.pybind_split_basepath)
 
     if ctx.opts.split_class_dir:
         if path == "":
@@ -804,6 +853,62 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
             if ctx.opts.split_class_dir:
                 if hasattr(ch, "i_children") and len(ch.i_children):
                     import_req.append(ch.arg)
+
+    l = parent.search_one(('ietf-yang-schema-mount', 'mount-point'))
+    # if ch has a sub statement of schema mount, it means
+    # ch is a mount point
+    if l:
+
+      # instantiated sm_cfg with system arguments ,
+      idx = sys.argv.index('--schema-mount')
+      file_source = sys.argv[idx + 1]
+      sm_cfg = schema_mount_config(file_source)
+
+      labelname = l.arg
+      modulename = module.arg
+      module_revision_list = []
+
+      # we establish a dictionary called dic,
+      # the key is schema name and the value
+      # is a tuple that contains module
+      # and its revision
+      dic = sm_cfg.find_module_revision_list()
+
+      # for this mount point, we figure out what schemas
+      # it uses, and put the relative (module, revision)
+      # tuples inside module_revision_list
+      for ml in sm_cfg.mount_point:
+        # if the module name and label name match ,
+        if ml['module'] == modulename and ml['label'] == labelname:
+          for schema in ml['use-schema']:
+            schema_name = schema['name']
+            for (m, r) in dic[schema_name]:
+              module_revision_list.append((m, r))
+
+      # until this step, we find what modules is mounted
+      # at this point(to be specific the point is ch),
+      # so we put the children of mounted modules into
+      # ch's children as its elements, the reason is
+      # we don't need to generate the classes because
+      # they have already been generated when pyang
+      # load the system arguments
+
+      for (m, r) in module_revision_list:
+        mounted_module = ctx.modules[(m, r)]
+        get_schema_mount_element(
+          ctx,
+          fd,
+          elements,
+          mounted_module,
+          module,
+          parent,
+          # path + "/" + ch.arg,
+          path,
+          parent_cfg=parent_cfg,
+          choice=choice,
+          register_paths=register_paths,
+        )
+
 
     # Write out the import statements if needed.
     if ctx.opts.split_class_dir:
@@ -1212,38 +1317,21 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
         ''' % (curr_ifunc, i["name"]))
 
             elif (i["origtype"] == 'list'):
-              target_path = Mapping_rules.get(i["path"])
-              if has_mapping_file == True and target_path is not None:
-                target_path = target_path.replace("/", ".")
-                tfd.write(
-                  '''
-    for k, listInst in input_yang_obj.%s.iteritems():
-        innerobj = translated_yang_obj%s.add(k)
-        _translate_%s(listInst, innerobj)
-          ''' % (i["name"], target_path,  curr_ifunc))
-              else:
                 tfd.write(
                 '''
     for k, listInst in input_yang_obj.%s.iteritems():
         innerobj = _translate_%s(listInst, translated_yang_obj)
         ''' % (i["name"], curr_ifunc))
+
             else:
                 if not (keyval and  i["yang_name"]  in keyval):
                     # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
-                    target_path = Mapping_rules.get(i["path"])
-                    if has_mapping_file == True and target_path is not None:
-                      target_node = target_path[target_path.rfind('/')+1:]
-                      tfd.write(
-                        '''
-    if input_yang_obj.%s._changed():
-        translated_yang_obj.%s = input_yang_obj.%s
-        ''' % (i["name"], target_node, i["name"]))
-                    else:
-                      tfd.write(
+                    tfd.write(
                 '''
     if input_yang_obj.%s._changed():
         input_yang_obj.%s = input_yang_obj.%s
         ''' % (i["name"], i["name"], i["name"]))
+
         tfd.write( '''
     return translated_yang_obj\n''')
 
@@ -1562,7 +1650,7 @@ def find_absolute_default_type(default_type, default_value, elemname):
     return find_absolute_default_type(default_type, default_value, elemname)
 
 
-def get_element(ctx, fd, element, module, parent, path, parent_cfg=True, choice=False, register_paths=True):
+def get_element(ctx, fd, element, module, parent, path, parent_cfg=True, choice=False, register_paths=True, is_mounted=False):
     # Handle mapping of an invidual element within the model. This function
     # produces a dictionary that can then be mapped into the relevant code that
     # dynamically generates a class.
@@ -1624,24 +1712,28 @@ def get_element(ctx, fd, element, module, parent, path, parent_cfg=True, choice=
         else:
             npath = path
 
+        l = element.search_one(('ietf-yang-schema-mount', 'mount-point'))
+        # if ch has a sub statement of schema mount, it means
+        # ch is a mount point
+
         # Create an element for a container.
-        if element.i_children or ctx.opts.generate_presence:
+        if element.i_children or ctx.opts.generate_presence or l:
             chs = element.i_children
             has_presence = True if element.search_one("presence") is not None else False
-            if has_presence is False and len(chs) == 0:
+            if has_presence is False and len(chs) == 0 and not l:
                 return []
-
-            get_children(
-                ctx,
-                fd,
-                chs,
-                module,
-                element,
-                npath,
-                parent_cfg=parent_cfg,
-                choice=choice,
-                register_paths=register_paths,
-            )
+            if not is_mounted:
+                get_children(
+                    ctx,
+                    fd,
+                    chs,
+                    module,
+                    element,
+                    npath,
+                    parent_cfg=parent_cfg,
+                    choice=choice,
+                    register_paths=register_paths,
+                )
 
             elemdict = {
                 "name": safe_name(element.arg),
@@ -1879,3 +1971,44 @@ def get_element(ctx, fd, element, module, parent, path, parent_cfg=True, choice=
 
         this_object.append(elemdict)
     return this_object
+
+
+def get_schema_mount_element(ctx, fd, elements, mounted_module, module, parent, path, parent_cfg=True,
+                             choice=False, register_paths=True):
+  # this function provide a get element the same way as get_element()
+  # the difference is that get_element does not allow us to get the
+  # top level's children as elements, but this function allows
+  to_add_elements = []
+  origin_children = []
+
+  for child in mounted_module.i_children:
+    to_add_elements = get_element(
+      ctx,
+      fd,
+      child,
+      module,
+      parent,
+      path,
+      parent_cfg=parent_cfg,
+      choice=choice,
+      register_paths=register_paths,
+      is_mounted=True,
+    )
+    origin_element = get_element(
+      ctx,
+      fd,
+      child,
+      mounted_module,
+      mounted_module,
+      '/' + child.arg,
+      parent_cfg=parent_cfg,
+      choice=choice,
+      register_paths=register_paths,
+      is_mounted=True,
+    )
+    if to_add_elements[0]['origtype'] in ["container", "module", "list", "submodule", "input", "output", "rpc",
+                                          "notification"]:
+      to_add_elements[0]['type'] = origin_element[0]['type'];
+
+    elements += to_add_elements
+
