@@ -24,10 +24,10 @@ from __future__ import unicode_literals
 
 import copy
 import decimal
+import json
 import optparse
 import os
 import sys
-import json
 from collections import OrderedDict
 
 import six
@@ -334,6 +334,12 @@ class PyangBindClass(plugin.PyangPlugin):
                                   the root of each module""",
         ),
         option_group.add_option(
+          "--mapping-rules",
+          dest="mapping_rules",
+          action="store",
+          help="""Use mapping rules to generate the translation template""",
+        ),
+        option_group.add_option(
           "--schema-mount",
           help="""use schema mount""",
         ),
@@ -344,7 +350,6 @@ class PyangBindClass(plugin.PyangPlugin):
           file_source = sys.argv[idx + 1]
           sm_cfg = schema_mount_config(file_source)
           sm_cfg.add_args()
-
 
 # Core function to build the pyangbind output - starting with building the
 # dependencies - and then working through the instantiated tree that pyang has
@@ -730,9 +735,18 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
     # relevant directories for the modules to be created into. In this case
     # even though fd might be a valid file handle, we ignore it.
 
+    # deal with the mapping rules, to generate the translation template
+    has_mapping_file = False
+    Mapping_rules = None
+    if ctx.opts.mapping_rules:
+      try:
+        with open(ctx.opts.mapping_rules, 'r') as f:
+          Mapping_rules = json.load(f)
+        has_mapping_file = True
+      except IOError as m:
+        raise IOError("could not open pyangbind output file (%s)" % m)
 
 
-    #print('pybind_split_basepath:',ctx.pybind_split_basepath)
 
     if ctx.opts.split_class_dir:
         if path == "":
@@ -853,7 +867,6 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
             if ctx.opts.split_class_dir:
                 if hasattr(ch, "i_children") and len(ch.i_children):
                     import_req.append(ch.arg)
-
     l = parent.search_one(('ietf-yang-schema-mount', 'mount-point'))
     # if ch has a sub statement of schema mount, it means
     # ch is a mount point
@@ -908,7 +921,6 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
           choice=choice,
           register_paths=register_paths,
         )
-
 
     # Write out the import statements if needed.
     if ctx.opts.split_class_dir:
@@ -1317,21 +1329,40 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
         ''' % (curr_ifunc, i["name"]))
 
             elif (i["origtype"] == 'list'):
+              if Mapping_rules:
+                target_path = Mapping_rules.get(i["path"])
+              if has_mapping_file == True and target_path is not None:
+                target_path = target_path.replace("/", ".")
+                tfd.write(
+                  '''
+    for k, listInst in input_yang_obj.%s.iteritems():
+        innerobj = translated_yang_obj%s.add(k)
+        _translate_%s(listInst, innerobj)
+          ''' % (i["name"], target_path,  curr_ifunc))
+              else:
                 tfd.write(
                 '''
     for k, listInst in input_yang_obj.%s.iteritems():
         innerobj = _translate_%s(listInst, translated_yang_obj)
         ''' % (i["name"], curr_ifunc))
-
             else:
                 if not (keyval and  i["yang_name"]  in keyval):
                     # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
-                    tfd.write(
+                    if Mapping_rules:
+                      target_path = Mapping_rules.get(i["path"])
+                    if has_mapping_file == True and target_path is not None:
+                      target_node = target_path[target_path.rfind('/')+1:]
+                      tfd.write(
+                        '''
+    if input_yang_obj.%s._changed():
+        translated_yang_obj.%s = input_yang_obj.%s
+        ''' % (i["name"], target_node, i["name"]))
+                    else:
+                      tfd.write(
                 '''
     if input_yang_obj.%s._changed():
         input_yang_obj.%s = input_yang_obj.%s
         ''' % (i["name"], i["name"], i["name"]))
-
         tfd.write( '''
     return translated_yang_obj\n''')
 
@@ -1722,18 +1753,19 @@ def get_element(ctx, fd, element, module, parent, path, parent_cfg=True, choice=
             has_presence = True if element.search_one("presence") is not None else False
             if has_presence is False and len(chs) == 0 and not l:
                 return []
+
             if not is_mounted:
-                get_children(
-                    ctx,
-                    fd,
-                    chs,
-                    module,
-                    element,
-                    npath,
-                    parent_cfg=parent_cfg,
-                    choice=choice,
-                    register_paths=register_paths,
-                )
+              get_children(
+                ctx,
+                fd,
+                chs,
+                module,
+                element,
+                npath,
+                parent_cfg=parent_cfg,
+                choice=choice,
+                register_paths=register_paths,
+              )
 
             elemdict = {
                 "name": safe_name(element.arg),
@@ -1972,7 +2004,6 @@ def get_element(ctx, fd, element, module, parent, path, parent_cfg=True, choice=
         this_object.append(elemdict)
     return this_object
 
-
 def get_schema_mount_element(ctx, fd, elements, mounted_module, module, parent, path, parent_cfg=True,
                              choice=False, register_paths=True):
   # this function provide a get element the same way as get_element()
@@ -2011,4 +2042,3 @@ def get_schema_mount_element(ctx, fd, elements, mounted_module, module, parent, 
       to_add_elements[0]['type'] = origin_element[0]['type'];
 
     elements += to_add_elements
-
