@@ -10,15 +10,15 @@ module ietf-routing {
   import ietf-interfaces {
     prefix "if";
     description
-      "A Network Management Datastore Architecture (NMDA)
-       compatible version of the ietf-interfaces module
+      "An 'ietf-interfaces' module version that is compatible with
+       the Network Management Datastore Architecture (NMDA)
        is required.";
   }
 
   organization
-    "IETF NETMOD - Networking Modeling Working Group";
+    "IETF NETMOD (Network Modeling) Working Group";
   contact
-    "WG Web:   <http://tools.ietf.org/wg/netmod/>
+    "WG Web:   <https://datatracker.ietf.org/wg/netmod/>
      WG List:  <mailto:rtgwg@ietf.org>
 
      Editor:   Ladislav Lhotka
@@ -30,10 +30,10 @@ module ietf-routing {
 
   description
     "This YANG module defines essential components for the management
-     of a routing subsystem. The model fully conforms to the Network
+     of a routing subsystem.  The model fully conforms to the Network
      Management Datastore Architecture (NMDA).
 
-     Copyright (c) 2017 IETF Trust and the persons
+     Copyright (c) 2018 IETF Trust and the persons
      identified as authors of the code.  All rights reserved.
 
      Redistribution and use in source and binary forms, with or
@@ -41,18 +41,16 @@ module ietf-routing {
      to the license terms contained in, the Simplified BSD License
      set forth in Section 4.c of the IETF Trust's Legal Provisions
      Relating to IETF Documents
-     (http://trustee.ietf.org/license-info).
-
-     This version of this YANG module is part of RFC XXXX; see
+     (https://trustee.ietf.org/license-info).
+     This version of this YANG module is part of RFC 8349; see
      the RFC itself for full legal notices.";
-  reference "RFC XXXX";
 
-  revision 2018-01-25 {
+  revision 2018-03-13 {
     description
-      "Network Management Datastore Architecture (NMDA) Revision";
+      "Network Management Datastore Architecture (NMDA) revision.";
     reference
-      "RFC XXXX: A YANG Data Model for Routing Management
-       (NMDA Version)";
+      "RFC 8349: A YANG Data Model for Routing Management
+                 (NMDA Version)";
   }
 
   revision 2016-11-04 {
@@ -65,18 +63,18 @@ module ietf-routing {
   /* Features */
   feature multiple-ribs {
     description
-      "This feature indicates that the server supports user-defined
-       RIBs.
+      "This feature indicates that the server supports
+       user-defined RIBs.
 
        Servers that do not advertise this feature SHOULD provide
        exactly one system-controlled RIB per supported address family
-       and make it also the default RIB.  This RIB then appears as an
-       entry of the list /routing/ribs/rib.";
+       and also make it the default RIB.  This RIB then appears as an
+       entry in the list '/routing/ribs/rib'.";
   }
 
   feature router-id {
     description
-      "This feature indicates that the server supports of an explicit
+      "This feature indicates that the server supports an explicit
        32-bit router ID that is used by some routing protocols.
 
        Servers that do not advertise this feature set a router ID
@@ -92,17 +90,16 @@ module ietf-routing {
       "Base identity from which identities describing address
        families are derived.";
   }
-
   identity ipv4 {
     base address-family;
     description
-      "This identity represents IPv4 address family.";
+      "This identity represents an IPv4 address family.";
   }
 
   identity ipv6 {
     base address-family;
     description
-      "This identity represents IPv6 address family.";
+      "This identity represents an IPv6 address family.";
   }
 
   identity control-plane-protocol {
@@ -128,7 +125,7 @@ module ietf-routing {
   identity static {
     base routing-protocol;
     description
-      "Static routing pseudo-protocol.";
+      "'Static' routing pseudo-protocol.";
   }
 
   /* Type Definitions */
@@ -149,7 +146,7 @@ module ietf-routing {
       type identityref {
         base address-family;
       }
-      mandatory "true";
+      mandatory true;
       description
         "Address family.";
     }
@@ -157,14 +154,14 @@ module ietf-routing {
 
   grouping router-id {
     description
-      "This grouping provides router ID.";
+      "This grouping provides a router ID.";
     leaf router-id {
       type yang:dotted-quad;
       description
         "A 32-bit number in the form of a dotted quad that is used by
          some routing protocols identifying a router.";
       reference
-        "RFC 2328: OSPF Version 2.";
+        "RFC 2328: OSPF Version 2";
     }
   }
 
@@ -204,7 +201,7 @@ module ietf-routing {
     description
       "Generic parameters of next hops in static routes.";
     choice next-hop-options {
-      mandatory "true";
+      mandatory true;
       description
         "Options for next hops in static routes.
 
@@ -230,11 +227,11 @@ module ietf-routing {
       case next-hop-list {
         container next-hop-list {
           description
-            "Container for multiple next-hops.";
+            "Container for multiple next hops.";
           list next-hop {
             key "index";
             description
-              "An entry of a next-hop list.
+              "An entry in a next-hop list.
 
                Modules for address families MUST augment this list
                with a leaf containing a next-hop address of that
@@ -257,11 +254,12 @@ module ietf-routing {
       }
     }
   }
+
   grouping next-hop-state-content {
     description
       "Generic state parameters of next hops.";
     choice next-hop-options {
-      mandatory "true";
+      mandatory true;
       description
         "Options for next hops.
 
@@ -291,7 +289,7 @@ module ietf-routing {
             "Container for multiple next hops.";
           list next-hop {
             description
-              "An entry of a next-hop list.
+              "An entry in a next-hop list.
 
                Modules for address families MUST augment this list
                with a leaf containing a next-hop address of that
@@ -314,7 +312,7 @@ module ietf-routing {
       type identityref {
         base routing-protocol;
       }
-      mandatory "true";
+      mandatory true;
       description
         "Type of the routing protocol from which the route
          originated.";
@@ -322,14 +320,14 @@ module ietf-routing {
     leaf active {
       type empty;
       description
-        "Presence of this leaf indicates that the route is preferred
-         among all routes in the same RIB that have the same
-         destination prefix.";
+        "The presence of this leaf indicates that the route is
+         preferred among all routes in the same RIB that have the
+         same destination prefix.";
     }
     leaf last-updated {
       type yang:date-and-time;
       description
-        "Time stamp of the last modification of the route.  If the
+        "Timestamp of the last modification of the route.  If the
          route was never modified, it is the time when the route was
          inserted into the RIB.";
     }
@@ -344,11 +342,11 @@ module ietf-routing {
       if-feature "router-id";
       description
         "Support for the global router ID.  Routing protocols
-         that use router ID can use this parameter or override it
+         that use a router ID can use this parameter or override it
          with another value.";
     }
     container interfaces {
-      config "false";
+      config false;
       description
         "Network-layer interfaces used for routing.";
       leaf-list interface {
@@ -370,8 +368,9 @@ module ietf-routing {
             base control-plane-protocol;
           }
           description
-            "Type of the control-plane protocol - an identity derived
-             from the 'control-plane-protocol' base identity.";
+            "Type of the control-plane protocol -- an identity
+             derived from the 'control-plane-protocol'
+             base identity.";
         }
         leaf name {
           type string;
@@ -405,11 +404,11 @@ module ietf-routing {
       list rib {
         key "name";
         description
-          "Each entry contains configuration for a RIB identified by
-           the 'name' key.
+          "Each entry contains a configuration for a RIB identified
+           by the 'name' key.
 
            Entries having the same key as a system-controlled entry
-           of the list /routing/ribs/rib are used for
+           in the list '/routing/ribs/rib' are used for
            configuring parameters of that entry.  Other entries
            define additional user-controlled RIBs.";
         leaf name {
@@ -419,7 +418,7 @@ module ietf-routing {
 
              For system-controlled entries, the value of this leaf
              must be the same as the name of the corresponding entry
-             in operational state.
+             in the operational state.
 
              For user-controlled entries, an arbitrary name can be
              used.";
@@ -433,7 +432,7 @@ module ietf-routing {
           if-feature "multiple-ribs";
           type boolean;
           default "true";
-          config "false";
+          config false;
           description
             "This flag has the value of 'true' if and only if the RIB
              is the default RIB for the given address family.
@@ -442,21 +441,22 @@ module ietf-routing {
              in the default RIBs.";
         }
         container routes {
-          config "false";
+          config false;
           description
-            "Current content of the RIB.";
+            "Current contents of the RIB.";
           list route {
             description
               "A RIB route entry.  This data node MUST be augmented
-               with information specific for routes of each address
+               with information specific to routes of each address
                family.";
             leaf route-preference {
               type route-preference;
               description
-                "This route attribute, also known as administrative
-                 distance, allows for selecting the preferred route
+                "This route attribute, also known as 'administrative
+                 distance', allows for selecting the preferred route
                  among routes with the same destination prefix.  A
-                 smaller value means a more preferred route.";
+                 smaller value indicates a route that is
+                 more preferred.";
             }
             container next-hop {
               description
@@ -502,9 +502,9 @@ module ietf-routing {
   }
 
   /*
-   * The subsequent data nodes are obviated and obsoleted by the
-   * "Network Management Architecture" as described in
-   * draft-ietf-netmod-revised-datastores.
+   * The subsequent data nodes are obviated and obsoleted
+   * by the Network Management Datastore Architecture
+   * as described in RFC 8342.
    */
   container routing-state {
     config false;
@@ -559,7 +559,7 @@ module ietf-routing {
           description
             "The name of the control-plane protocol instance.
 
-             For system-controlled instances this name is
+             For system-controlled instances, this name is
              persistent, i.e., it SHOULD NOT change across
              reboots.";
         }
@@ -575,7 +575,7 @@ module ietf-routing {
         status obsolete;
         description
           "Each entry represents a RIB identified by the 'name'
-           key. All routes in a RIB MUST belong to the same address
+           key.  All routes in a RIB MUST belong to the same address
            family.
 
            An implementation SHOULD provide one system-controlled
@@ -606,21 +606,22 @@ module ietf-routing {
         container routes {
           status obsolete;
           description
-            "Current content of the RIB.";
+            "Current contents of the RIB.";
           list route {
             status obsolete;
             description
               "A RIB route entry.  This data node MUST be augmented
-               with information specific for routes of each address
+               with information specific to routes of each address
                family.";
             leaf route-preference {
               type route-preference;
               status obsolete;
               description
-                "This route attribute, also known as administrative
-                 distance, allows for selecting the preferred route
+                "This route attribute, also known as 'administrative
+                 distance', allows for selecting the preferred route
                  among routes with the same destination prefix.  A
-                 smaller value means a more preferred route.";
+                 smaller value indicates a route that is
+                 more preferred.";
             }
             container next-hop {
               status obsolete;
@@ -672,7 +673,7 @@ module ietf-routing {
               uses route-metadata {
                 status obsolete;
                 description
-                "Active route metadata.";
+                  "Active route metadata.";
               }
             }
           }

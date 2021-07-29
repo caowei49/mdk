@@ -1,3 +1,5 @@
+from test.yang_bindings.ietf_interfaces_binding import *
+
 
 def _translate__interfaces_interface_statistics(input_yang_obj: yc_statistics_ietf_interfaces__interfaces_interface_statistics, translated_yang_obj=None):
     """
