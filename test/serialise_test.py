@@ -1,7 +1,10 @@
+from lxml import etree
+
 from pyangbind.lib.serialise import pybindIETFXMLEncoder,pybindIETFXMLDecoder
 from test.yang_bindings import ietf_interfaces_binding
 import pyangbind.lib.pybindJSON as pybindJSON
 from test.yang_bindings.huawei_ifm_binding import *
+from test.utils import *
 
 from test.yang_bindings.ietf_interfaces_binding import ietf_interfaces
 
@@ -60,11 +63,22 @@ def test_deserialise_xml():
 
 def test_serialise_python_obj(py_obj):
     xml = pybindIETFXMLEncoder.serialise(py_obj)
-    print(xml)
+    # add operation in xml
+    xpath = '/a:ifm/a:interfaces/a:interface[a:name="test1"]'
+    ns = {'a': 'urn:huawei:yang:huawei-ifm', 'xc': 'urn:ietf:params:xml:ns:netconf:base:1.0'}
+    operation = 'merge'
+    root = add_operation(xml, xpath, ns, operation)
+    return root
+
+def add_operation(xml, xpath, ns, operation):
+  root = etree.fromstring(xml)
+  add_netconf_operation(root, xpath, ns, operation)
+  return etree.tostring(root, pretty_print=True).decode()
 
 if __name__ == "__main__":
     # yangobj = test_decoder_yang_obj()
     # translated_obj = _translate_ietf_interfaces_obj._translate__ietf_interfaces(yangobj)
     py_obj = modify_yang_obj()
-    test_serialise_python_obj(py_obj)
+    xml = test_serialise_python_obj(py_obj)
+    print(xml)
     # test_deserialise_xml()
