@@ -1352,6 +1352,7 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
                       target_path = Mapping_rules.get(i["path"])
                     if has_mapping_file == True and target_path is not None:
                       target_node = target_path[target_path.rfind('/')+1:]
+                      print(i["path"] + " --> "+ target_path)
                       tfd.write(
                         '''
     if input_yang_obj.%s._changed():
