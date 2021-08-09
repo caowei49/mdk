@@ -30,13 +30,7 @@
 					"revision": "2018-01-09",
 					"namespace": "urn:ietf:params:xml:ns:yang:ietf-interfaces",
 					"conformance-type": "implement"
-				},				
-				{
-                                        "name": "ietf-routing",
-                                        "revision": "2018-03-13",
-                                        "namespace": "urn:ietf:params:xml:ns:yang:ietf-routing",
-                                        "conformance-type": "implement"
-                                }]
+				}				]
 		}]
 	}
 }

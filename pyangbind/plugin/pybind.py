@@ -54,7 +54,6 @@ if DEBUG:
 # value, this map is used to provide a mapping of these values to the python
 # True and False boolean instances.
 class_bool_map = {"false": False, "False": False, "true": True, "True": True}
-
 class_map = {
     # this map is dynamically built upon but defines how we take
     # a YANG type  and translate it into a native Python class
@@ -1294,7 +1293,7 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
         curr_func = (path if not path == "" else "/%s" % parent.arg)
         curr_func = safe_name(curr_func.replace("/", "_"))
         #print("curr_func:", curr_func)
-
+        cur_path = ""
         tfd.write(
             '''
 def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
@@ -1317,7 +1316,6 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
     Keys are already added as part of yang list instance creation
     """
     ''' % (curr_func, curr_class_name, (path if not path == "" else "/%s" % parent.arg)))
-
         for i in elements:
             curr_ifunc = i["path"]
             curr_ifunc = safe_name(curr_ifunc.replace("/", "_"))
@@ -1330,15 +1328,26 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
 
             elif (i["origtype"] == 'list'):
               if Mapping_rules:
-                target_path = Mapping_rules.get(i["path"])
+                target_path = Mapping_rules.get(i["path"]+"/"+i["key"])
               if has_mapping_file == True and target_path is not None:
-                target_path = target_path.replace("/", ".")
+                # print("cur_path is: " + cur_path)
+                s = cur_path.split("/")
+                s1 = target_path.split("/")
+                for it in s:
+                  if it in s1:
+                    s1.remove(it)
+                tmp = ""
+                for it in s1:
+                  tmp = tmp + "/" + it
+                # print(tmp)
+                tmp = tmp.replace("/", ".")
+                print(i["path"]+"/"+i["key"] + " <-- mapping to --> " + target_path.replace(".", "/"))
                 tfd.write(
                   '''
     for k, listInst in input_yang_obj.%s.iteritems():
         innerobj = translated_yang_obj%s.add(k)
         _translate_%s(listInst, innerobj)
-          ''' % (i["name"], target_path,  curr_ifunc))
+          ''' % (i["name"], tmp,  curr_ifunc))
               else:
                 tfd.write(
                 '''
@@ -1350,9 +1359,10 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
                     # We need to add translation logic only for non-key leaves. Keys are already added as part of yang list instance creation
                     if Mapping_rules:
                       target_path = Mapping_rules.get(i["path"])
+                      cur_path = target_path
                     if has_mapping_file == True and target_path is not None:
                       target_node = target_path[target_path.rfind('/')+1:]
-                      print(i["path"] + " --> "+ target_path)
+                      print(i["path"] + " <-- mapping to --> "+ target_path)
                       tfd.write(
                         '''
     if input_yang_obj.%s._changed():
@@ -1366,7 +1376,6 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
         ''' % (i["name"], i["name"], i["name"]))
         tfd.write( '''
     return translated_yang_obj\n''')
-
 
 
         # For each element, write out a getter and setter method - with the doc
