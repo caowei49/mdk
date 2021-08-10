@@ -5,7 +5,7 @@ from binding import openconfig_local_routing
 import pyangbind.lib.pybindJSON as pybindJSON
 import os
 
-# Instantiate a copy of the pyangbind-kettle module
+# Instantiate a copy of the MDK-kettle module
 oclr = openconfig_local_routing()
 
 # Add an entry to the static route list

@@ -16,7 +16,7 @@ with open("README.rst") as readme:
 
 
 setup(
-    name="pyangbind",
+    name="MDK",
     # PyangBind uses the same versioning approach as OpenConfig - see
     # http://www.openconfig.net/file-cabinet/Semantic_Versioning_for_OpenConfig.pdf?attredirects=0&d=1
     version=pyangbind.__version__,
@@ -45,7 +45,7 @@ setup(
     ],
     include_package_data=True,
     keywords="yang pyang",
-    packages=find_packages(exclude=["tests.*", "tests"]),
+    packages=find_packages(exclude=["tests.*", "tests", "test.*", "test", "mdk_utils.*", "mdk_utils"]),
     install_requires=reqs,
     zip_safe=False,
     test_suite="tests.test_suite",

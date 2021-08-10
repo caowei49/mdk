@@ -65,7 +65,7 @@ class PyangBindTestCase(unittest.TestCase):
             raise RuntimeError("Could not locate `pyang` executable.")
         base_dir = os.path.dirname(os.path.dirname(__file__))
         yang_files = [os.path.join(cls._test_path, filename) for filename in cls.yang_files]
-        plugin_dir = os.path.join(base_dir, "pyangbind", "plugin")
+        plugin_dir = os.path.join(base_dir, "MDK", "plugin")
 
         flags = cls.pyang_flags or []
         if cls.split_class_dir is True:

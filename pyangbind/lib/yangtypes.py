@@ -933,7 +933,7 @@ def YANGDynClass(*args, **kwargs):
       - choice:     The choice branch that this type is a member of.
       - is_{container,leaf}: whether this element is a container or
                              a leaf.
-      - path_helper: pyangbind helper class to allow XPATH lookups.
+      - path_helper: MDK helper class to allow XPATH lookups.
       - supplied_register_path: an override for the path that this
                                 object should register to. This is
                                 used when an element is a member of
