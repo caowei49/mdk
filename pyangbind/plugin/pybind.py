@@ -1372,6 +1372,7 @@ def _translate_%s(input_yang_obj: %s, translated_yang_obj=None):
                       tfd.write(
                 '''
     if input_yang_obj.%s._changed():
+        // need to map by yourself
         input_yang_obj.%s = input_yang_obj.%s
         ''' % (i["name"], i["name"], i["name"]))
         tfd.write( '''
