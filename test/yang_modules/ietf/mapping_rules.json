@@ -1,9 +1,0 @@
-{
-  "/interfaces": "/ifm/interfaces",
-  "/interfaces/interface": "/ifm/interfaces/interface",
-  "/interfaces/interface/name": "/ifm/interfaces/interface/name",
-  "/interfaces/interface/ipv4": "/ifm/interfaces/interface/ipv4",
-  "/interfaces/interface/ipv4/address": "/ifm/interfaces/interface/ipv4/addresses/address",
-  "/interfaces/interface/ipv4/address/ip": "/ifm/interfaces/interface/ipv4/addresses/address/ip",
-  "/interfaces/interface/ipv4/address/prefix_length": "/ifm/interfaces/interface/ipv4/addresses/address/ip/mask"
-}

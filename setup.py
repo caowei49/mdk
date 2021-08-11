@@ -45,7 +45,7 @@ setup(
     ],
     include_package_data=True,
     keywords="yang pyang",
-    packages=find_packages(exclude=["tests.*", "tests", "test.*", "test", "mdk_utils.*", "mdk_utils"]),
+    packages=find_packages(exclude=["tests.*", "tests"]),
     install_requires=reqs,
     zip_safe=False,
     test_suite="tests.test_suite",
