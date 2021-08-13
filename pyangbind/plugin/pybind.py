@@ -257,17 +257,17 @@ class PyangBindClass(plugin.PyangPlugin):
         build_pybind(ctx, modules, fd)
 
     def add_opts(self, optparser):
-        # Add MDK specific operations to pyang. These are documented in the
+        # Add pyangbind specific operations to pyang. These are documented in the
         # options, but are essentially divided into three sets.
-        #   * xpathhelper - How MDK should deal with xpath expressions.
+        #   * xpathhelper - How pyangbind should deal with xpath expressions.
         #     This module is documented in lib/xpathhelper and describes how
         #     to support registration, updates, and retrieval of xpaths.
         #   * class output - whether a single file should be created, or whether
         #     a hierarchy of python modules should be created. The latter is
         #     preferable when one has large trees being compiled.
-        #   * extensions - support for YANG extensions that MDK should look
+        #   * extensions - support for YANG extensions that pyangbind should look
         #     for, and add as a dictionary with each element.
-        option_group = optparse.OptionGroup(optparser, "MDK output specific options")
+        option_group = optparse.OptionGroup(optparser, "pyangbind output specific options")
         option_group.add_option(
             "--use-xpathhelper",
             dest="use_xpathhelper",
@@ -350,12 +350,12 @@ class PyangBindClass(plugin.PyangPlugin):
           sm_cfg = schema_mount_config(file_source)
           sm_cfg.add_args()
 
-# Core function to build the MDK output - starting with building the
+# Core function to build the pyangbind output - starting with building the
 # dependencies - and then working through the instantiated tree that pyang has
 # already parsed.
 def build_pybind(ctx, modules, fd):
     # Restrict the output of the plugin to only the modules that are supplied
-    # to pyang. More modules are parsed by MDK to resolve typedefs and
+    # to pyang. More modules are parsed by pyangbind to resolve typedefs and
     # identities.
     module_d = {}
     for mod in modules:
@@ -363,21 +363,21 @@ def build_pybind(ctx, modules, fd):
     pyang_called_modules = module_d.keys()
 
     # Bail if there are pyang errors, since this certainly means that the
-    # MDK output will fail - unless these are solely due to imports that
+    # pyangbind output will fail - unless these are solely due to imports that
     # we provided but then unused.
     if len(ctx.errors):
         for e in ctx.errors:
             print("INFO: encountered %s" % str(e))
             if not e[1] in ["UNUSED_IMPORT", "PATTERN_ERROR"]:
-                sys.stderr.write("FATAL: MDK cannot build module that pyang" + " has found errors with.\n")
+                sys.stderr.write("FATAL: pyangbind cannot build module that pyang" + " has found errors with.\n")
                 sys.exit(127)
 
-    # Build the common set of imports that all MDK files needs
+    # Build the common set of imports that all pyangbind files needs
     ctx.pybind_common_hdr = "# -*- coding: utf-8 -*-"
     ctx.pybind_common_hdr += "\n"
     ctx.pybind_common_hdr += "from operator import attrgetter\n"
     if ctx.opts.use_xpathhelper:
-        ctx.pybind_common_hdr += "import MDK.lib.xpathhelper as xpathhelper\n"
+        ctx.pybind_common_hdr += "import pyangbind.lib.xpathhelper as xpathhelper\n"
 
     yangtypes_imports = [
         "RestrictedPrecisionDecimalType",
@@ -389,8 +389,8 @@ def build_pybind(ctx, modules, fd):
         "ReferenceType",
     ]
     for library in yangtypes_imports:
-        ctx.pybind_common_hdr += "from MDK.lib.yangtypes import {}\n".format(library)
-    ctx.pybind_common_hdr += "from MDK.lib.base import PybindBase\n"
+        ctx.pybind_common_hdr += "from pyangbind.lib.yangtypes import {}\n".format(library)
+    ctx.pybind_common_hdr += "from pyangbind.lib.base import PybindBase\n"
     ctx.pybind_common_hdr += "from collections import OrderedDict\n"
     ctx.pybind_common_hdr += "from decimal import Decimal\n"
     ctx.pybind_common_hdr += "from bitarray import bitarray\n"
@@ -707,7 +707,7 @@ def build_typedefs(ctx, defnd):
 
                 if "default" in i[1] and not default:
                     # When multiple 'default' values are specified within a union that
-                    # is within a typedef, then MDK will choose the first one.
+                    # is within a typedef, then pyangbind will choose the first one.
                     q = True if "quote_arg" in i[1] else False
                     default = (i[1]["default"], q)
             class_map[type_name] = {"native_type": native_type, "base_type": False, "parent_type": parent_type}
@@ -730,7 +730,7 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
     elements = []
     choices = False
 
-    # When MDK was asked to split classes, then we need to create the
+    # When pyangbind was asked to split classes, then we need to create the
     # relevant directories for the modules to be created into. In this case
     # even though fd might be a valid file handle, we ignore it.
 
@@ -743,7 +743,7 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
           Mapping_rules = json.load(f)
         has_mapping_file = True
       except IOError as m:
-        raise IOError("could not open MDK output file (%s)" % m)
+        raise IOError("could not open pyangbind output file (%s)" % m)
 
 
 
@@ -787,7 +787,7 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
                 else:
                     nfd = codecs.open(fpath, "w", encoding="utf-8")
             except IOError as m:
-                raise IOError("could not open MDK output file (%s)" % m)
+                raise IOError("could not open pyangbind output file (%s)" % m)
             nfd.write(ctx.pybind_common_hdr)
         else:
             try:
@@ -796,7 +796,7 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
                 else:
                     nfd = codecs.open(fpath, "a", encoding="utf-8")
             except IOError as w:
-                raise IOError("could not open MDK output file (%s)" % w)
+                raise IOError("could not open pyangbind output file (%s)" % w)
     else:
         # If we weren't asked to split the files, then just use the file handle
         # provided.
@@ -1077,7 +1077,7 @@ def get_children(ctx, fd, i_children, module, parent, path=str(), parent_cfg=Tru
                 if "default" in i and not i["default"] is None:
                     class_str["arg"] += ", default=%s(%s)" % (i["defaulttype"], default_arg)
             elif i["class"] == "leafref":
-                # A leafref, MDK uses the special ReferenceType which performs a
+                # A leafref, pyangbind uses the special ReferenceType which performs a
                 # lookup against the path_helper class provided.
                 class_str["name"] = "__%s" % (i["name"])
                 class_str["type"] = "YANGDynClass"
