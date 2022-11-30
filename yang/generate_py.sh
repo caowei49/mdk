@@ -20,7 +20,7 @@ do
   if [ "${temp_file:1:9}" == "translate" ]
   then
     mv $files $TEMP/translate-gen
-  elif [ "${temp_file##*.}" = "py" ]; then
+  elif [ "${temp_file##*.}" == "py" ]; then
     mv $files $TEMP/python-gen
   fi
 done
